@@ -112,7 +112,7 @@ plot(after_combined,
 # The immediately following code line (subtracting after from before) is my first attempt at subtraction, but apparently the variables need to be flipped. My initial approach SHOULD be the intuitive subtraction because we expect the before image to have more light than the image after the power outage, but due to external factors when the satellite picked up these images, the after layer actually is the layer with more light. So we need to swap these variables, as we do in the next line of code. I want to think more abou this, because the result of this subtraction assigns a positive or negative value to each point, so we need to be sure that we are subtracting in the right order.
 
 #difference_light <- before_combined - after_combined
-difference_light <- after_combined - before_combined
+difference_light <- (after_combined - before_combined) > 200
 
 plot(difference_light)
 
@@ -218,7 +218,7 @@ st_crs(roi_sf)
 # cropped = uncropped[intersects,]
 
 intersects <- st_intersects(blackout_mask, roi_sf, sparse = FALSE)
-blackout_mask_cropped = roi_sf[intersects,]
+blackout_mask_cropped = blackout_mask[intersects,]
 ```
 
 ```{r}
@@ -227,9 +227,111 @@ blackout_mask_cropped = roi_sf[intersects,]
 blackout_mask_cropped <- st_transform(blackout_mask_cropped, crs = 3083)
 st_crs(blackout_mask_cropped)
 ```
-## roads
+## Roads data
 
 ```{r}
+# load roads data, and isolate highways specifically
+roads_query <- "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'"
+```
+
+```{r}
+highways <- st_read("data/gis_osm_roads_free_1.gpkg", query = roads_query)
+```
+
+```{r}
+# check crs projection of highways dataset
+st_crs(highways) #WGS84
+
+# change crs to NAD83
+highways = st_transform(highways, crs = 3083)
+
+st_crs(highways)
+
+```
+
+```{r}
+# identify areas 200 m either side of all highways
+
+highway_buffer <- st_buffer(highways, 200)
+
+# dissolve buffers
+
+highway_dissolved <- st_union(highway_buffer)
+
+# check that the CRS is what it should be, perhaps buffering / dissolving changes this
+
+st_crs(highway_dissolved)
+```
+
+## Buildings 
+
+```{r}
+query_buildings <- "SELECT * FROM gis_osm_buildings_a_free_1 WHERE (type IS NULL AND name IS NULL) OR type in ('residential', 'apartments', 'house', 'static_caravan', 'detached')"
+```
+
+```{r}
+buildings <- st_read("data/gis_osm_buildings_a_free_1.gpkg", query = query_buildings)
+```
+```{r}
+st_crs(buildings)
+
+buildings_crs <- st_transform(buildings, crs = 3083)
+```
+### Try to figure out the number of houses that lost power
+
+```{r}
+# To ignore areas around highways, remove the highway buffer from our vectorized blackout mask using st_difference().
+
+plot(blackout_mask_cropped)
+
+plot(highway_dissolved)
+
+#blackout_mask_cropped_minus_hwy <- st_difference(blackout_mask_cropped, highway_dissolved)
+
+plot(blackout_mask_cropped_minus_hwy)
+```
+```{r}
+# use spatial subsetting to find all the residential buildings in blackout areas (just like you did to crop data to your ROI.)
+
+# intersects <- st_intersects(uncropped, bbox, sparse = FALSE)
+# cropped = uncropped[intersects,]
+
+intersects_res_blk <- st_intersects(blackout_mask_cropped_minus_hwy, buildings_crs, sparse = FALSE)
+res_bld = blackout_mask_cropped_minus_hwy[intersects_res_blk,]
+
+plot(res_bld)
+
+```
+
+```{r}
+# spatially join the building data with the joined ACS data using st_join().
+joined_res_blk <- st_join()
+```
+
+
+## Census tract data
+
+```{r}
+# load in layers from census data, one for the census and one for the income
+
+acs_geoms <- st_read("ACS/ACS_2019_5YR_TRACT_48_TEXAS.gdb",
+                     layer = "ACS_2019_5YR_TRACT_48_TEXAS")
+acs_income <- st_read("ACS/ACS_2019_5YR_TRACT_48_TEXAS.gdb",
+                      layer = "X19_INCOME")
+
+# load in another layer of interest, such as the median income that comes from the income layer we just specified
+
+median_income <- acs_income[c("GEOID", "B19013e1")]
+```
+
+```{r}
+# explore layers
+
+st_layers(dsn = "data/ACS_2019_5YR_TRACT_48_TEXAS.gdb")
+
+# join the geoid columns from both datasets so we 
+
+#joined_census <- left_join(acs_geoms , acs_income, by = )
 
 ```
 
